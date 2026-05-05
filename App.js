@@ -15,47 +15,229 @@ import {
   SafeAreaView,
   Platform,
   Modal,
-  ScrollView,
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// ─── 相册选择组件 ─────────────────────────────────────────────
-function AlbumSelector({ visible, albums, onSelect, onClose }) {
-  if (!visible) return null;
+const ROOT_DIRS = [
+  { name: '手机存储', path: FileSystem.documentDirectory ? FileSystem.documentDirectory.replace(/Documents\/?$/, '') : null },
+  { name: '应用文档', path: FileSystem.documentDirectory },
+];
+
+// Android 常见存储路径（通过SAF方式无法直接访问，但可让用户选择）
+const ANDROID_SUGGESTED = [
+  { name: '📁 DCIM', path: null, type: 'saf-suggest', hint: 'DCIM（相机）' },
+  { name: '📁 Pictures', path: null, type: 'saf-suggest', hint: 'Pictures（图片）' },
+  { name: '📁 Download', path: null, type: 'saf-suggest', hint: 'Download（下载）' },
+  { name: '📁 选择任意文件夹…', path: null, type: 'pick-dir' },
+];
+
+// ─── 文件夹浏览器 Modal ─────────────────────────────────────
+function FolderBrowser({ visible, onSelectGifs, onClose }) {
+  const [currentPath, setCurrentPath] = useState(null);
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [pathHistory, setPathHistory] = useState([]); // 浏览历史用于返回
+
+  // 初始：显示建议位置
+  const showSuggestions = () => {
+    setCurrentPath(null);
+    setEntries(ANDROID_SUGGESTED);
+    setPathHistory([]);
+  };
+
+  useEffect(() => {
+    if (visible) showSuggestions();
+  }, [visible]);
+
+  // 用 SAF 让用户选择目录，然后读取其中GIF
+  const pickDirectory = async () => {
+    try {
+      setLoading(true);
+      const result = await DocumentPicker.pickDirectoryAsync();
+      if (result && result.uri) {
+        await loadSafDirectory(result.uri);
+      }
+    } catch (e) {
+      // 用户取消
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 读取 SAF 目录内容
+  const loadSafDirectory = async (dirUri) => {
+    setLoading(true);
+    try {
+      const result = await FileSystem.readDirectoryAsync(dirUri, { encoding: 'utf8' });
+      // result 是文件名数组，需要拼接完整uri
+      const items = result.map(name => {
+        const uri = dirUri.endsWith('/') ? dirUri + name : dirUri + '/' + name;
+        return { name, uri, isDirectory: false }; // SAF 不区分文件/目录，需要stat
+      });
+      // 分别处理文件夹和GIF文件
+      const gifItems = [];
+      const dirItems = [];
+      for (const item of items) {
+        try {
+          const info = await FileSystem.getInfoAsync(item.uri);
+          if (info.isDirectory) {
+            dirItems.push({ ...item, isDirectory: true });
+          } else if (item.name.toLowerCase().endsWith('.gif')) {
+            gifItems.push({ ...item, isDirectory: false });
+          }
+        } catch {
+          if (item.name.toLowerCase().endsWith('.gif')) {
+            gifItems.push({ ...item, isDirectory: false });
+          }
+        }
+      }
+      setEntries([
+        ...dirItems.map(d => ({ ...d, type: 'dir' })),
+        ...gifItems.map(g => ({ ...g, type: 'gif' })),
+      ]);
+      setCurrentPath(dirUri);
+      setPathHistory(prev => [...prev, dirUri]);
+    } catch (e) {
+      Alert.alert('读取失败', e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 点击文件夹进入
+  const enterDirectory = (item) => {
+    if (item.type === 'pick-dir' || item.type === 'saf-suggest') {
+      pickDirectory();
+      return;
+    }
+    if (item.isDirectory || item.type === 'dir') {
+      loadSafDirectory(item.uri);
+    }
+  };
+
+  // 返回上级
+  const goUp = () => {
+    if (pathHistory.length <= 1) {
+      showSuggestions();
+    } else {
+      const newHistory = [...pathHistory];
+      newHistory.pop(); // 移除当前
+      const parentUri = newHistory[newHistory.length - 1];
+      if (parentUri) {
+        setPathHistory(newHistory);
+        loadSafDirectory(parentUri);
+      } else {
+        showSuggestions();
+      }
+    }
+  };
+
+  // 确认选择当前目录中的所有GIF
+  const confirmCurrentFolder = async () => {
+    setLoading(true);
+    try {
+      const gifs = [];
+      // 扫描当前目录（含子目录）
+      const scanDir = async (uri) => {
+        const files = await FileSystem.readDirectoryAsync(uri);
+        for (const name of files) {
+          const childUri = uri.endsWith('/') ? uri + name : uri + '/' + name;
+          try {
+            const info = await FileSystem.getInfoAsync(childUri);
+            if (info.isDirectory) {
+              await scanDir(childUri);
+            } else if (name.toLowerCase().endsWith('.gif')) {
+              gifs.push({
+                id: childUri,
+                uri: childUri,
+                filename: name,
+              });
+            }
+          } catch {
+            if (name.toLowerCase().endsWith('.gif')) {
+              gifs.push({ id: childUri, uri: childUri, filename: name });
+            }
+          }
+        }
+      };
+      if (currentPath) {
+        await scanDir(currentPath);
+      }
+      onSelectGifs(gifs);
+      onClose();
+    } catch (e) {
+      Alert.alert('扫描失败', e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.albumContainer}>
-        <View style={styles.albumHeader}>
-          <Text style={styles.albumTitle}>选择文件夹</Text>
-          <TouchableOpacity onPress={onClose} style={styles.albumCloseBtn}>
-            <Text style={styles.albumCloseText}>✕</Text>
+      <SafeAreaView style={styles.browserContainer}>
+        {/* 顶部栏 */}
+        <View style={styles.browserHeader}>
+          <TouchableOpacity
+            style={styles.browserBackBtn}
+            onPress={pathHistory.length > 0 ? goUp : onClose}
+          >
+            <Text style={styles.browserBackText}>
+              {pathHistory.length > 0 ? '‹ 返回' : '✕ 关闭'}
+            </Text>
           </TouchableOpacity>
+          <Text style={styles.browserTitle} numberOfLines={1}>
+            {currentPath ? '已选择文件夹' : '选择位置'}
+          </Text>
+          {currentPath && (
+            <TouchableOpacity style={styles.browserConfirmBtn} onPress={confirmCurrentFolder}>
+              <Text style={styles.browserConfirmText}>确认选择</Text>
+            </TouchableOpacity>
+          )}
+          {!currentPath && <View style={{ width: 64 }} />}
         </View>
+
+        {loading && (
+          <View style={styles.browserLoading}>
+            <ActivityIndicator color="#e94560" />
+            <Text style={styles.browserLoadingText}>读取中...</Text>
+          </View>
+        )}
+
+        {/* 文件列表 */}
         <FlatList
-          data={albums}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.albumList}
+          data={entries}
+          keyExtractor={(item, idx) => item.uri || item.type || idx.toString()}
+          contentContainerStyle={styles.browserList}
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={styles.albumItem}
-              onPress={() => onSelect(item)}
+              style={styles.browserItem}
+              onPress={() => enterDirectory(item)}
             >
-              <Text style={styles.albumIcon}>📁</Text>
-              <View style={styles.albumInfo}>
-                <Text style={styles.albumName} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <Text style={styles.albumCount}>
-                  {item.assetCount} 个文件
-                </Text>
-              </View>
-              <Text style={styles.albumArrow}>›</Text>
+              <Text style={styles.browserItemIcon}>
+                {item.type === 'dir' || item.isDirectory ? '📁' : '🖼️'}
+              </Text>
+              <Text style={styles.browserItemName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              {item.type === 'gif' && (
+                <Image
+                  source={{ uri: item.uri }}
+                  style={styles.browserItemThumb}
+                  resizeMode="cover"
+                />
+              )}
             </TouchableOpacity>
           )}
           ListEmptyComponent={
-            <Text style={styles.albumEmpty}>暂无相册</Text>
+            !loading ? (
+              <Text style={styles.browserEmpty}>
+                {currentPath ? '该文件夹中没有 GIF 文件' : '请选择一个位置'}
+              </Text>
+            ) : null
           }
         />
       </SafeAreaView>
@@ -63,21 +245,17 @@ function AlbumSelector({ visible, albums, onSelect, onClose }) {
   );
 }
 
-// ─── 欢迎/空状态组件 ──────────────────────────────────────────────
-function EmptyState({ onPickFolder, hasAlbum }) {
+// ─── 空状态组件 ─────────────────────────────────────────────
+function EmptyState({ onPickFolder }) {
   return (
     <View style={styles.emptyContainer}>
       <Text style={styles.emptyIcon}>🎞</Text>
       <Text style={styles.emptyTitle}>GIF 播放器</Text>
       <Text style={styles.emptySubtitle}>
-        {hasAlbum
-          ? '当前文件夹未找到 GIF 文件'
-          : '未找到 GIF 文件\n请确认已授予相册访问权限'}
+        未找到 GIF 文件{'\n'}请选择包含 GIF 的文件夹
       </Text>
       <TouchableOpacity style={styles.emptyButton} onPress={onPickFolder}>
-        <Text style={styles.emptyButtonText}>
-          {hasAlbum ? '选择其他文件夹' : '选择文件夹'}
-        </Text>
+        <Text style={styles.emptyButtonText}>选择文件夹</Text>
       </TouchableOpacity>
     </View>
   );
@@ -113,7 +291,6 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
 
   const currentGif = gifList[currentIndex];
 
-  // 自动播放逻辑
   useEffect(() => {
     if (autoPlay) {
       autoPlayTimer.current = setInterval(() => {
@@ -123,7 +300,6 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
     return () => clearInterval(autoPlayTimer.current);
   }, [autoPlay, gifList.length]);
 
-  // 自动隐藏控制栏
   const resetControlsTimer = useCallback(() => {
     setShowControls(true);
     clearTimeout(controlsTimer.current);
@@ -135,7 +311,6 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
     return () => clearTimeout(controlsTimer.current);
   }, [currentIndex]);
 
-  // 滑动手势
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -180,7 +355,6 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
     <View style={styles.viewerContainer}>
       <StatusBar hidden />
 
-      {/* GIF 展示区 */}
       <Animated.View
         style={[styles.gifWrapper, { transform: [{ translateX }] }]}
         {...panResponder.panHandlers}
@@ -193,7 +367,6 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
         />
       </Animated.View>
 
-      {/* 顶部信息栏 */}
       {showControls && (
         <View style={styles.topBar}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -208,7 +381,6 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
         </View>
       )}
 
-      {/* 底部控制栏 */}
       {showControls && (
         <View style={styles.bottomBar}>
           <TouchableOpacity
@@ -236,7 +408,6 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
         </View>
       )}
 
-      {/* 进度圆点指示器 */}
       {showControls && gifList.length <= 20 && (
         <View style={styles.dotRow}>
           {gifList.map((_, i) => (
@@ -250,117 +421,14 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
   );
 }
 
-// ─── 主 App ──────────────────────────────────────────────────────
+// ─── 主 App ─────────────────────────────────────────────────────
 export default function App() {
   const [gifList, setGifList] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [viewerVisible, setViewerVisible] = useState(false);
   const [autoPlay, setAutoPlay] = useState(false);
-  const [permission, setPermission] = useState(null);
-  const [albums, setAlbums] = useState([]);
-  const [currentAlbum, setCurrentAlbum] = useState(null);
-  const [showAlbumSelector, setShowAlbumSelector] = useState(false);
-
-  // 获取相册列表
-  const fetchAlbums = useCallback(async () => {
-    try {
-      const { status } = await MediaLibrary.getPermissionsAsync();
-      if (status !== 'granted') {
-        const { status: newStatus } = await MediaLibrary.requestPermissionsAsync();
-        if (newStatus !== 'granted') {
-          Alert.alert('权限被拒绝', '需要相册访问权限');
-          return;
-        }
-      }
-      const albumList = await MediaLibrary.getAlbumsAsync();
-      setAlbums(albumList);
-      console.log('Fetched albums:', albumList.length);
-    } catch (err) {
-      console.error('获取相册失败:', err);
-    }
-  }, []);
-
-  // 扫描指定相册或全部的 GIF
-  const scanGifs = useCallback(async (album = null) => {
-    setLoading(true);
-    try {
-      const { status } = await MediaLibrary.getPermissionsAsync();
-      if (status !== 'granted') {
-        const { status: newStatus } = await MediaLibrary.requestPermissionsAsync();
-        if (newStatus !== 'granted') {
-          Alert.alert('权限被拒绝', '需要相册访问权限才能读取 GIF 文件');
-          setLoading(false);
-          return;
-        }
-      }
-
-      let allAssets = [];
-
-      if (album) {
-        // 扫描指定相册
-        let hasNextPage = true;
-        let endCursor = undefined;
-
-        while (hasNextPage) {
-          const { assets, endCursor: cursor, hasNextPage: hasNext } =
-            await MediaLibrary.getAssetsAsync({
-              album: album,
-              mediaType: 'photo',
-              first: 200,
-              after: endCursor,
-            });
-
-          const gifs = assets.filter(
-            (a) =>
-              a.filename?.toLowerCase().endsWith('.gif') ||
-              a.uri?.toLowerCase().includes('.gif')
-          );
-          allAssets = [...allAssets, ...gifs];
-          endCursor = cursor;
-          hasNextPage = hasNext;
-        }
-      } else {
-        // 扫描所有
-        let hasNextPage = true;
-        let endCursor = undefined;
-
-        while (hasNextPage) {
-          const { assets, endCursor: cursor, hasNextPage: hasNext } =
-            await MediaLibrary.getAssetsAsync({
-              mediaType: 'photo',
-              first: 200,
-              after: endCursor,
-            });
-
-          const gifs = assets.filter(
-            (a) =>
-              a.filename?.toLowerCase().endsWith('.gif') ||
-              a.uri?.toLowerCase().includes('.gif')
-          );
-          allAssets = [...allAssets, ...gifs];
-          endCursor = cursor;
-          hasNextPage = hasNext;
-        }
-      }
-
-      setGifList(allAssets);
-      setCurrentAlbum(album);
-    } catch (err) {
-      Alert.alert('错误', '扫描文件时出错：' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // 初始化：获取相册并扫描全部
-    const init = async () => {
-      await fetchAlbums();
-      await scanGifs();
-    };
-    init();
-  }, []);
+  const [showBrowser, setShowBrowser] = useState(false);
 
   const openViewer = (index) => {
     setCurrentIndex(index);
@@ -372,15 +440,12 @@ export default function App() {
     setAutoPlay(false);
   };
 
-  // 选择相册
-  const handleSelectAlbum = (album) => {
-    setShowAlbumSelector(false);
-    scanGifs(album);
-  };
-
-  // 扫描全部
-  const handleScanAll = () => {
-    scanGifs(null);
+  // 从文件夹浏览器接收GIF列表
+  const handleSelectGifs = (gifs) => {
+    setGifList(gifs);
+    if (gifs.length > 0) {
+      setCurrentIndex(0);
+    }
   };
 
   // ── 加载中 ──
@@ -415,36 +480,24 @@ export default function App() {
       {/* 顶部标题栏 */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🎞 GIF 播放器</Text>
-        <Text style={styles.headerSubtitle}>
-          {currentAlbum ? currentAlbum.title : '全部文件'}
-        </Text>
-        <Text style={styles.headerCount}>{gifList.length} 个</Text>
+        <Text style={styles.headerCount}>{gifList.length} 个文件</Text>
       </View>
 
       {/* 操作栏 */}
       <View style={styles.actionBar}>
         <TouchableOpacity
           style={styles.actionBtn}
-          onPress={() => setShowAlbumSelector(true)}
+          onPress={() => setShowBrowser(true)}
         >
-          <Text style={styles.actionBtnIcon}>📁</Text>
+          <Text style={styles.actionBtnIcon}>📂</Text>
           <Text style={styles.actionBtnText}>选择文件夹</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={handleScanAll}>
-          <Text style={styles.actionBtnIcon}>🔄</Text>
-          <Text style={styles.actionBtnText}>全部</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => scanGifs(currentAlbum)}>
-          <Text style={styles.actionBtnIcon}>🔃</Text>
-          <Text style={styles.actionBtnText}>刷新</Text>
         </TouchableOpacity>
       </View>
 
       {gifList.length === 0 ? (
-        <EmptyState onPickFolder={() => setShowAlbumSelector(true)} hasAlbum={!!currentAlbum} />
+        <EmptyState onPickFolder={() => setShowBrowser(true)} />
       ) : (
         <>
-          {/* 全部播放按钮 */}
           <TouchableOpacity
             style={styles.playAllBtn}
             onPress={() => {
@@ -455,7 +508,6 @@ export default function App() {
             <Text style={styles.playAllText}>▶  顺序播放全部</Text>
           </TouchableOpacity>
 
-          {/* GIF 缩略图网格 */}
           <FlatList
             data={gifList}
             keyExtractor={(item) => item.id}
@@ -473,69 +525,56 @@ export default function App() {
         </>
       )}
 
-      {/* 相册选择弹窗 */}
-      <AlbumSelector
-        visible={showAlbumSelector}
-        albums={albums}
-        onSelect={handleSelectAlbum}
-        onClose={() => setShowAlbumSelector(false)}
+      {/* 文件夹浏览器 */}
+      <FolderBrowser
+        visible={showBrowser}
+        onSelectGifs={handleSelectGifs}
+        onClose={() => setShowBrowser(false)}
       />
     </SafeAreaView>
   );
 }
 
-// ─── 样式 ─────────────────────────────────────────────────────────
+// ─── 样式 ────────────────────────────────────────────────────────
 const THUMB_SIZE = (SCREEN_WIDTH - 6) / 3;
 
 const styles = StyleSheet.create({
   // 容器
   container: { flex: 1, backgroundColor: '#1a1a2e' },
   loadingContainer: {
-    flex: 1,
-    backgroundColor: '#1a1a2e',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flex: 1, backgroundColor: '#1a1a2e',
+    justifyContent: 'center', alignItems: 'center',
   },
   loadingText: { color: '#aaa', marginTop: 12, fontSize: 15 },
 
   // 顶部栏
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 12,
     backgroundColor: '#16213e',
-    borderBottomWidth: 1,
-    borderBottomColor: '#0f3460',
+    borderBottomWidth: 1, borderBottomColor: '#0f3460',
   },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  headerSubtitle: { flex: 1, color: '#888', fontSize: 13, marginLeft: 12 },
-  headerCount: { color: '#aaa', fontSize: 13, marginLeft: 8 },
+  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', flex: 1 },
+  headerCount: { color: '#aaa', fontSize: 13 },
 
   // 操作栏
   actionBar: {
     flexDirection: 'row',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 12, paddingVertical: 8,
     backgroundColor: '#1a1a2e',
   },
   actionBtn: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    marginHorizontal: 4,
-    borderRadius: 8,
-    backgroundColor: '#0f3460',
+    flex: 1, alignItems: 'center',
+    paddingVertical: 10, marginHorizontal: 4,
+    borderRadius: 8, backgroundColor: '#0f3460',
   },
-  actionBtnIcon: { fontSize: 18, marginBottom: 2 },
+  actionBtnIcon: { fontSize: 20, marginBottom: 2 },
   actionBtnText: { color: '#e94560', fontSize: 12, fontWeight: '600' },
 
   // 全部播放
   playAllBtn: {
-    margin: 12,
-    backgroundColor: '#e94560',
-    paddingVertical: 14,
-    borderRadius: 12,
+    margin: 12, backgroundColor: '#e94560',
+    paddingVertical: 14, borderRadius: 12,
     alignItems: 'center',
   },
   playAllText: { color: '#fff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
@@ -543,48 +582,32 @@ const styles = StyleSheet.create({
   // 缩略图网格
   grid: { paddingHorizontal: 1, paddingBottom: 20 },
   thumbnail: {
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    margin: 1,
-    backgroundColor: '#0f3460',
-    overflow: 'hidden',
-    borderRadius: 4,
+    width: THUMB_SIZE, height: THUMB_SIZE, margin: 1,
+    backgroundColor: '#0f3460', overflow: 'hidden', borderRadius: 4,
   },
   thumbnailActive: { borderWidth: 2, borderColor: '#e94560' },
   thumbnailActiveBorder: {
     ...StyleSheet.absoluteFillObject,
-    borderWidth: 3,
-    borderColor: '#e94560',
-    borderRadius: 4,
+    borderWidth: 3, borderColor: '#e94560', borderRadius: 4,
   },
   thumbnailImage: { width: '100%', height: '100%' },
   thumbnailOverlay: {
-    position: 'absolute',
-    bottom: 4,
-    right: 6,
+    position: 'absolute', bottom: 4, right: 6,
     backgroundColor: 'rgba(0,0,0,0.55)',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6,
   },
   thumbnailIndex: { color: '#fff', fontSize: 11 },
 
   // 空状态
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
+    flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40,
   },
   emptyIcon: { fontSize: 72, marginBottom: 20 },
   emptyTitle: { color: '#fff', fontSize: 22, fontWeight: 'bold', marginBottom: 10 },
   emptySubtitle: { color: '#888', fontSize: 15, textAlign: 'center', lineHeight: 24 },
   emptyButton: {
-    marginTop: 28,
-    backgroundColor: '#e94560',
-    paddingHorizontal: 36,
-    paddingVertical: 12,
-    borderRadius: 24,
+    marginTop: 28, backgroundColor: '#e94560',
+    paddingHorizontal: 36, paddingVertical: 12, borderRadius: 24,
   },
   emptyButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 
@@ -595,25 +618,16 @@ const styles = StyleSheet.create({
 
   // 顶部信息栏
   topBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
+    position: 'absolute', top: 0, left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center',
     paddingTop: Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 24,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingHorizontal: 16, paddingBottom: 12,
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
   closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 36, height: 36, borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
+    justifyContent: 'center', alignItems: 'center', marginRight: 10,
   },
   closeBtnText: { color: '#fff', fontSize: 18 },
   topTitle: { flex: 1, color: '#fff', fontSize: 14 },
@@ -623,30 +637,21 @@ const styles = StyleSheet.create({
   bottomBar: {
     position: 'absolute',
     bottom: Platform.OS === 'ios' ? 36 : 24,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
+    left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 24, paddingVertical: 14,
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
   navBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 52, height: 52, borderRadius: 26,
     backgroundColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center', alignItems: 'center',
   },
   navBtnDisabled: { opacity: 0.3 },
   navBtnText: { color: '#fff', fontSize: 36, lineHeight: 40, marginTop: -4 },
   autoPlayBtn: {
     backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
+    paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24,
   },
   autoPlayBtnActive: { backgroundColor: '#e94560' },
   autoPlayBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
@@ -655,55 +660,44 @@ const styles = StyleSheet.create({
   dotRow: {
     position: 'absolute',
     bottom: Platform.OS === 'ios' ? 100 : 90,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    paddingHorizontal: 20,
+    left: 0, right: 0,
+    flexDirection: 'row', justifyContent: 'center',
+    flexWrap: 'wrap', paddingHorizontal: 20,
   },
   dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.35)',
-    margin: 4,
+    width: 7, height: 7, borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.35)', margin: 4,
   },
   dotActive: { backgroundColor: '#e94560', transform: [{ scale: 1.4 }] },
 
-  // 相册选择
-  albumContainer: { flex: 1, backgroundColor: '#1a1a2e' },
-  albumHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#0f3460',
-  },
-  albumTitle: { flex: 1, color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  albumCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  albumCloseText: { color: '#fff', fontSize: 16 },
-  albumList: { padding: 8 },
-  albumItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
+  // 文件夹浏览器
+  browserContainer: { flex: 1, backgroundColor: '#1a1a2e' },
+  browserHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 12, paddingVertical: 12,
     backgroundColor: '#16213e',
-    borderRadius: 10,
-    marginBottom: 8,
+    borderBottomWidth: 1, borderBottomColor: '#0f3460',
   },
-  albumIcon: { fontSize: 28, marginRight: 12 },
-  albumInfo: { flex: 1 },
-  albumName: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  albumCount: { color: '#888', fontSize: 12, marginTop: 2 },
-  albumArrow: { color: '#555', fontSize: 20 },
-  albumEmpty: { color: '#888', textAlign: 'center', marginTop: 40, fontSize: 15 },
+  browserBackBtn: { padding: 8 },
+  browserBackText: { color: '#e94560', fontSize: 15, fontWeight: '600' },
+  browserTitle: { flex: 1, color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  browserConfirmBtn: {
+    backgroundColor: '#e94560', borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 6,
+  },
+  browserConfirmText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  browserLoading: {
+    padding: 20, alignItems: 'center',
+  },
+  browserLoadingText: { color: '#aaa', marginTop: 8, fontSize: 14 },
+  browserList: { padding: 8 },
+  browserItem: {
+    flexDirection: 'row', alignItems: 'center',
+    padding: 12, backgroundColor: '#16213e',
+    borderRadius: 8, marginBottom: 6,
+  },
+  browserItemIcon: { fontSize: 22, marginRight: 12 },
+  browserItemName: { flex: 1, color: '#fff', fontSize: 14 },
+  browserItemThumb: { width: 32, height: 32, borderRadius: 4 },
+  browserEmpty: { color: '#888', textAlign: 'center', marginTop: 40, fontSize: 15 },
 });
