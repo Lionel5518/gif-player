@@ -23,27 +23,25 @@ import * as FileSystem from 'expo-file-system';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const ROOT_DIRS = [
-  { name: '手机存储', path: FileSystem.documentDirectory ? FileSystem.documentDirectory.replace(/Documents\/?$/, '') : null },
-  { name: '应用文档', path: FileSystem.documentDirectory },
+  { name: '鎵嬫満瀛樺偍', path: FileSystem.documentDirectory ? FileSystem.documentDirectory.replace(/Documents\/?$/, '') : null },
+  { name: '搴旂敤鏂囨。', path: FileSystem.documentDirectory },
 ];
 
-// Android 常见存储路径（通过SAF方式无法直接访问，但可让用户选择）
-const ANDROID_SUGGESTED = [
-  { name: '📁 DCIM', path: null, type: 'saf-suggest', hint: 'DCIM（相机）' },
-  { name: '📁 Pictures', path: null, type: 'saf-suggest', hint: 'Pictures（图片）' },
-  { name: '📁 Download', path: null, type: 'saf-suggest', hint: 'Download（下载）' },
-  { name: '📁 选择任意文件夹…', path: null, type: 'pick-dir' },
+// Android 甯歌瀛樺偍璺緞锛堥€氳繃SAF鏂瑰紡鏃犳硶鐩存帴璁块棶锛屼絾鍙鐢ㄦ埛閫夋嫨锛?const ANDROID_SUGGESTED = [
+  { name: '馃搧 DCIM', path: null, type: 'saf-suggest', hint: 'DCIM锛堢浉鏈猴級' },
+  { name: '馃搧 Pictures', path: null, type: 'saf-suggest', hint: 'Pictures锛堝浘鐗囷級' },
+  { name: '馃搧 Download', path: null, type: 'saf-suggest', hint: 'Download锛堜笅杞斤級' },
+  { name: '馃搧 閫夋嫨浠绘剰鏂囦欢澶光€?, path: null, type: 'pick-dir' },
 ];
 
-// ─── 文件夹浏览器 Modal ─────────────────────────────────────
+// 鈹€鈹€鈹€ 鏂囦欢澶规祻瑙堝櫒 Modal 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 function FolderBrowser({ visible, onSelectGifs, onClose }) {
   const [currentPath, setCurrentPath] = useState(null);
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [pathHistory, setPathHistory] = useState([]); // 浏览历史用于返回
+  const [pathHistory, setPathHistory] = useState([]); // 娴忚鍘嗗彶鐢ㄤ簬杩斿洖
 
-  // 初始：显示建议位置
-  const showSuggestions = () => {
+  // 鍒濆锛氭樉绀哄缓璁綅缃?  const showSuggestions = () => {
     setCurrentPath(null);
     setEntries(ANDROID_SUGGESTED);
     setPathHistory([]);
@@ -53,7 +51,7 @@ function FolderBrowser({ visible, onSelectGifs, onClose }) {
     if (visible) showSuggestions();
   }, [visible]);
 
-  // 用 SAF 让用户选择目录，然后读取其中GIF
+  // 鐢?SAF 璁╃敤鎴烽€夋嫨鐩綍锛岀劧鍚庤鍙栧叾涓璆IF
   const pickDirectory = async () => {
     try {
       setLoading(true);
@@ -62,23 +60,23 @@ function FolderBrowser({ visible, onSelectGifs, onClose }) {
         await loadSafDirectory(result.uri);
       }
     } catch (e) {
-      // 用户取消
+      // 鐢ㄦ埛鍙栨秷
     } finally {
       setLoading(false);
     }
   };
 
-  // 读取 SAF 目录内容
+  // 璇诲彇 SAF 鐩綍鍐呭
   const loadSafDirectory = async (dirUri) => {
     setLoading(true);
     try {
       const result = await FileSystem.readDirectoryAsync(dirUri, { encoding: 'utf8' });
-      // result 是文件名数组，需要拼接完整uri
+      // result 鏄枃浠跺悕鏁扮粍锛岄渶瑕佹嫾鎺ュ畬鏁磚ri
       const items = result.map(name => {
         const uri = dirUri.endsWith('/') ? dirUri + name : dirUri + '/' + name;
-        return { name, uri, isDirectory: false }; // SAF 不区分文件/目录，需要stat
+        return { name, uri, isDirectory: false }; // SAF 涓嶅尯鍒嗘枃浠?鐩綍锛岄渶瑕乻tat
       });
-      // 分别处理文件夹和GIF文件
+      // 鍒嗗埆澶勭悊鏂囦欢澶瑰拰GIF鏂囦欢
       const gifItems = [];
       const dirItems = [];
       for (const item of items) {
@@ -102,14 +100,13 @@ function FolderBrowser({ visible, onSelectGifs, onClose }) {
       setCurrentPath(dirUri);
       setPathHistory(prev => [...prev, dirUri]);
     } catch (e) {
-      Alert.alert('读取失败', e.message);
+      Alert.alert('璇诲彇澶辫触', e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // 点击文件夹进入
-  const enterDirectory = (item) => {
+  // 鐐瑰嚮鏂囦欢澶硅繘鍏?  const enterDirectory = (item) => {
     if (item.type === 'pick-dir' || item.type === 'saf-suggest') {
       pickDirectory();
       return;
@@ -119,13 +116,13 @@ function FolderBrowser({ visible, onSelectGifs, onClose }) {
     }
   };
 
-  // 返回上级
+  // 杩斿洖涓婄骇
   const goUp = () => {
     if (pathHistory.length <= 1) {
       showSuggestions();
     } else {
       const newHistory = [...pathHistory];
-      newHistory.pop(); // 移除当前
+      newHistory.pop(); // 绉婚櫎褰撳墠
       const parentUri = newHistory[newHistory.length - 1];
       if (parentUri) {
         setPathHistory(newHistory);
@@ -136,12 +133,12 @@ function FolderBrowser({ visible, onSelectGifs, onClose }) {
     }
   };
 
-  // 确认选择当前目录中的所有GIF
+  // 纭閫夋嫨褰撳墠鐩綍涓殑鎵€鏈塆IF
   const confirmCurrentFolder = async () => {
     setLoading(true);
     try {
       const gifs = [];
-      // 扫描当前目录（含子目录）
+      // 鎵弿褰撳墠鐩綍锛堝惈瀛愮洰褰曪級
       const scanDir = async (uri) => {
         const files = await FileSystem.readDirectoryAsync(uri);
         for (const name of files) {
@@ -170,7 +167,7 @@ function FolderBrowser({ visible, onSelectGifs, onClose }) {
       onSelectGifs(gifs);
       onClose();
     } catch (e) {
-      Alert.alert('扫描失败', e.message);
+      Alert.alert('鎵弿澶辫触', e.message);
     } finally {
       setLoading(false);
     }
@@ -179,22 +176,22 @@ function FolderBrowser({ visible, onSelectGifs, onClose }) {
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.browserContainer}>
-        {/* 顶部栏 */}
+        {/* 椤堕儴鏍?*/}
         <View style={styles.browserHeader}>
           <TouchableOpacity
             style={styles.browserBackBtn}
             onPress={pathHistory.length > 0 ? goUp : onClose}
           >
             <Text style={styles.browserBackText}>
-              {pathHistory.length > 0 ? '‹ 返回' : '✕ 关闭'}
+              {pathHistory.length > 0 ? '鈥?杩斿洖' : '鉁?鍏抽棴'}
             </Text>
           </TouchableOpacity>
           <Text style={styles.browserTitle} numberOfLines={1}>
-            {currentPath ? '已选择文件夹' : '选择位置'}
+            {currentPath ? '宸查€夋嫨鏂囦欢澶? : '閫夋嫨浣嶇疆'}
           </Text>
           {currentPath && (
             <TouchableOpacity style={styles.browserConfirmBtn} onPress={confirmCurrentFolder}>
-              <Text style={styles.browserConfirmText}>确认选择</Text>
+              <Text style={styles.browserConfirmText}>纭閫夋嫨</Text>
             </TouchableOpacity>
           )}
           {!currentPath && <View style={{ width: 64 }} />}
@@ -203,11 +200,11 @@ function FolderBrowser({ visible, onSelectGifs, onClose }) {
         {loading && (
           <View style={styles.browserLoading}>
             <ActivityIndicator color="#e94560" />
-            <Text style={styles.browserLoadingText}>读取中...</Text>
+            <Text style={styles.browserLoadingText}>璇诲彇涓?..</Text>
           </View>
         )}
 
-        {/* 文件列表 */}
+        {/* 鏂囦欢鍒楄〃 */}
         <FlatList
           data={entries}
           keyExtractor={(item, idx) => item.uri || item.type || idx.toString()}
@@ -218,7 +215,7 @@ function FolderBrowser({ visible, onSelectGifs, onClose }) {
               onPress={() => enterDirectory(item)}
             >
               <Text style={styles.browserItemIcon}>
-                {item.type === 'dir' || item.isDirectory ? '📁' : '🖼️'}
+                {item.type === 'dir' || item.isDirectory ? '馃搧' : '馃柤锔?}
               </Text>
               <Text style={styles.browserItemName} numberOfLines={1}>
                 {item.name}
@@ -235,7 +232,7 @@ function FolderBrowser({ visible, onSelectGifs, onClose }) {
           ListEmptyComponent={
             !loading ? (
               <Text style={styles.browserEmpty}>
-                {currentPath ? '该文件夹中没有 GIF 文件' : '请选择一个位置'}
+                {currentPath ? '璇ユ枃浠跺す涓病鏈?GIF 鏂囦欢' : '璇烽€夋嫨涓€涓綅缃?}
               </Text>
             ) : null
           }
@@ -245,23 +242,23 @@ function FolderBrowser({ visible, onSelectGifs, onClose }) {
   );
 }
 
-// ─── 空状态组件 ─────────────────────────────────────────────
+// 鈹€鈹€鈹€ 绌虹姸鎬佺粍浠?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 function EmptyState({ onPickFolder }) {
   return (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyIcon}>🎞</Text>
-      <Text style={styles.emptyTitle}>GIF 播放器</Text>
+      <Text style={styles.emptyIcon}>馃帪</Text>
+      <Text style={styles.emptyTitle}>GIF 鎾斁鍣?/Text>
       <Text style={styles.emptySubtitle}>
-        未找到 GIF 文件{'\n'}请选择包含 GIF 的文件夹
+        鏈壘鍒?GIF 鏂囦欢{'\n'}璇烽€夋嫨鍖呭惈 GIF 鐨勬枃浠跺す
       </Text>
       <TouchableOpacity style={styles.emptyButton} onPress={onPickFolder}>
-        <Text style={styles.emptyButtonText}>选择文件夹</Text>
+        <Text style={styles.emptyButtonText}>閫夋嫨鏂囦欢澶?/Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-// ─── 缩略图列表组件 ───────────────────────────────────────────────
+// 鈹€鈹€鈹€ 缂╃暐鍥惧垪琛ㄧ粍浠?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 function GifThumbnail({ item, index, onSelect, isActive }) {
   return (
     <TouchableOpacity
@@ -282,7 +279,7 @@ function GifThumbnail({ item, index, onSelect, isActive }) {
   );
 }
 
-// ─── 主播放器组件 ─────────────────────────────────────────────────
+// 鈹€鈹€鈹€ 涓绘挱鏀惧櫒缁勪欢 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAutoPlay, onClose }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const autoPlayTimer = useRef(null);
@@ -370,7 +367,7 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
       {showControls && (
         <View style={styles.topBar}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={styles.closeBtnText}>✕</Text>
+            <Text style={styles.closeBtnText}>鉁?/Text>
           </TouchableOpacity>
           <Text style={styles.topTitle} numberOfLines={1}>
             {currentGif.filename}
@@ -387,7 +384,7 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
             style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
             onPress={goPrev}
           >
-            <Text style={styles.navBtnText}>‹</Text>
+            <Text style={styles.navBtnText}>鈥?/Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -395,7 +392,7 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
             onPress={onToggleAutoPlay}
           >
             <Text style={styles.autoPlayBtnText}>
-              {autoPlay ? '⏸ 暂停' : '▶ 自动'}
+              {autoPlay ? '鈴?鏆傚仠' : '鈻?鑷姩'}
             </Text>
           </TouchableOpacity>
 
@@ -403,7 +400,7 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
             style={[styles.navBtn, currentIndex === gifList.length - 1 && styles.navBtnDisabled]}
             onPress={goNext}
           >
-            <Text style={styles.navBtnText}>›</Text>
+            <Text style={styles.navBtnText}>鈥?/Text>
           </TouchableOpacity>
         </View>
       )}
@@ -421,7 +418,7 @@ function GifViewer({ gifList, currentIndex, onChangeIndex, autoPlay, onToggleAut
   );
 }
 
-// ─── 主 App ─────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ 涓?App 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 export default function App() {
   const [gifList, setGifList] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -440,7 +437,7 @@ export default function App() {
     setAutoPlay(false);
   };
 
-  // 从文件夹浏览器接收GIF列表
+  // 浠庢枃浠跺す娴忚鍣ㄦ帴鏀禛IF鍒楄〃
   const handleSelectGifs = (gifs) => {
     setGifList(gifs);
     if (gifs.length > 0) {
@@ -448,17 +445,87 @@ export default function App() {
     }
   };
 
-  // ── 加载中 ──
+  // 鈹€鈹€ 鎵弿鍏ㄩ儴 GIF 鈹€鈹€
+  const scanAllGifs = async () => {
+    setLoading(true);
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('鏉冮檺涓嶈冻', '璇锋巿浜堢浉鍐岃闂潈闄?);
+        setLoading(false);
+        return;
+      }
+
+      const assets = await MediaLibrary.getAssetsAsync({
+        mediaType: 'photo',
+        first: 10000,
+      });
+
+      const gifs = assets.assets
+        .filter(a => a.uri.toLowerCase().endsWith('.gif'))
+        .map(a => ({
+          id: a.id,
+          uri: a.uri,
+          filename: a.filename || 'GIF',
+        }));
+
+      setGifList(gifs);
+      setCurrentIndex(0);
+    } catch (e) {
+      Alert.alert('鎵弿澶辫触', e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 鈹€鈹€ 鍒锋柊褰撳墠 GIF 鍒楄〃 鈹€鈹€
+  const refreshCurrent = async () => {
+    if (gifList.length > 0) {
+      setLoading(true);
+      try {
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('鏉冮檺涓嶈冻', '璇锋巿浜堢浉鍐岃闂潈闄?);
+          setLoading(false);
+          return;
+        }
+
+        const assets = await MediaLibrary.getAssetsAsync({
+          mediaType: 'photo',
+          first: 10000,
+        });
+
+        const gifs = assets.assets
+          .filter(a => a.uri.toLowerCase().endsWith('.gif'))
+          .map(a => ({
+            id: a.id,
+            uri: a.uri,
+            filename: a.filename || 'GIF',
+          }));
+
+        setGifList(gifs);
+        if (currentIndex >= gifs.length) {
+          setCurrentIndex(0);
+        }
+      } catch (e) {
+        Alert.alert('鍒锋柊澶辫触', e.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  // 鈹€鈹€ 鍔犺浇涓?鈹€鈹€
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#FF6B6B" />
-        <Text style={styles.loadingText}>正在扫描 GIF 文件...</Text>
+        <Text style={styles.loadingText}>姝ｅ湪鎵弿 GIF 鏂囦欢...</Text>
       </View>
     );
   }
 
-  // ── 全屏播放器 ──
+  // 鈹€鈹€ 鍏ㄥ睆鎾斁鍣?鈹€鈹€
   if (viewerVisible && gifList.length > 0) {
     return (
       <GifViewer
@@ -472,25 +539,43 @@ export default function App() {
     );
   }
 
-  // ── 列表页 ──
+  // 鈹€鈹€ 鍒楄〃椤?鈹€鈹€
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1a1a2e" />
 
-      {/* 顶部标题栏 */}
+      {/* 椤堕儴鏍囬鏍?*/}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>🎞 GIF 播放器</Text>
-        <Text style={styles.headerCount}>{gifList.length} 个文件</Text>
+        <Text style={styles.headerTitle}>馃帪 GIF 鎾斁鍣?/Text>
+        <Text style={styles.headerCount}>{gifList.length} 涓枃浠?/Text>
       </View>
 
-      {/* 操作栏 */}
+      {/* 鎿嶄綔鏍?*/}
       <View style={styles.actionBar}>
+        <TouchableOpacity
+          style={[styles.actionBtn, gifList.length > 0 && styles.actionBtnActive]}
+          onPress={scanAllGifs}
+          disabled={loading}
+        >
+          <Text style={styles.actionBtnIcon}>馃攳</Text>
+          <Text style={styles.actionBtnText}>鎵弿鍏ㄩ儴</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionBtn, gifList.length > 0 && styles.actionBtnActive]}
+          onPress={refreshCurrent}
+          disabled={loading}
+        >
+          <Text style={styles.actionBtnIcon}>馃攦</Text>
+          <Text style={styles.actionBtnText}>鍒锋柊</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.actionBtn}
           onPress={() => setShowBrowser(true)}
         >
-          <Text style={styles.actionBtnIcon}>📂</Text>
-          <Text style={styles.actionBtnText}>选择文件夹</Text>
+          <Text style={styles.actionBtnIcon}>馃搨</Text>
+          <Text style={styles.actionBtnText}>閫夋嫨鏂囦欢澶?/Text>
         </TouchableOpacity>
       </View>
 
@@ -505,7 +590,7 @@ export default function App() {
               openViewer(0);
             }}
           >
-            <Text style={styles.playAllText}>▶  顺序播放全部</Text>
+            <Text style={styles.playAllText}>鈻? 椤哄簭鎾斁鍏ㄩ儴</Text>
           </TouchableOpacity>
 
           <FlatList
@@ -525,7 +610,7 @@ export default function App() {
         </>
       )}
 
-      {/* 文件夹浏览器 */}
+      {/* 鏂囦欢澶规祻瑙堝櫒 */}
       <FolderBrowser
         visible={showBrowser}
         onSelectGifs={handleSelectGifs}
@@ -535,11 +620,11 @@ export default function App() {
   );
 }
 
-// ─── 样式 ────────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ 鏍峰紡 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const THUMB_SIZE = (SCREEN_WIDTH - 6) / 3;
 
 const styles = StyleSheet.create({
-  // 容器
+  // 瀹瑰櫒
   container: { flex: 1, backgroundColor: '#1a1a2e' },
   loadingContainer: {
     flex: 1, backgroundColor: '#1a1a2e',
@@ -547,8 +632,7 @@ const styles = StyleSheet.create({
   },
   loadingText: { color: '#aaa', marginTop: 12, fontSize: 15 },
 
-  // 顶部栏
-  header: {
+  // 椤堕儴鏍?  header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 12,
     backgroundColor: '#16213e',
@@ -557,8 +641,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', flex: 1 },
   headerCount: { color: '#aaa', fontSize: 13 },
 
-  // 操作栏
-  actionBar: {
+  // 鎿嶄綔鏍?  actionBar: {
     flexDirection: 'row',
     paddingHorizontal: 12, paddingVertical: 8,
     backgroundColor: '#1a1a2e',
@@ -568,10 +651,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10, marginHorizontal: 4,
     borderRadius: 8, backgroundColor: '#0f3460',
   },
+  actionBtnActive: {
+    backgroundColor: '#0f3460',
+  },
   actionBtnIcon: { fontSize: 20, marginBottom: 2 },
   actionBtnText: { color: '#e94560', fontSize: 12, fontWeight: '600' },
 
-  // 全部播放
+  // 鍏ㄩ儴鎾斁
   playAllBtn: {
     margin: 12, backgroundColor: '#e94560',
     paddingVertical: 14, borderRadius: 12,
@@ -579,8 +665,7 @@ const styles = StyleSheet.create({
   },
   playAllText: { color: '#fff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
 
-  // 缩略图网格
-  grid: { paddingHorizontal: 1, paddingBottom: 20 },
+  // 缂╃暐鍥剧綉鏍?  grid: { paddingHorizontal: 1, paddingBottom: 20 },
   thumbnail: {
     width: THUMB_SIZE, height: THUMB_SIZE, margin: 1,
     backgroundColor: '#0f3460', overflow: 'hidden', borderRadius: 4,
@@ -598,8 +683,7 @@ const styles = StyleSheet.create({
   },
   thumbnailIndex: { color: '#fff', fontSize: 11 },
 
-  // 空状态
-  emptyContainer: {
+  // 绌虹姸鎬?  emptyContainer: {
     flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40,
   },
   emptyIcon: { fontSize: 72, marginBottom: 20 },
@@ -611,13 +695,11 @@ const styles = StyleSheet.create({
   },
   emptyButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 
-  // 播放器
-  viewerContainer: { flex: 1, backgroundColor: '#000' },
+  // 鎾斁鍣?  viewerContainer: { flex: 1, backgroundColor: '#000' },
   gifWrapper: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   gifImage: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT },
 
-  // 顶部信息栏
-  topBar: {
+  // 椤堕儴淇℃伅鏍?  topBar: {
     position: 'absolute', top: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center',
     paddingTop: Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 24,
@@ -633,8 +715,7 @@ const styles = StyleSheet.create({
   topTitle: { flex: 1, color: '#fff', fontSize: 14 },
   topCounter: { color: '#ccc', fontSize: 13, marginLeft: 8 },
 
-  // 底部控制栏
-  bottomBar: {
+  // 搴曢儴鎺у埗鏍?  bottomBar: {
     position: 'absolute',
     bottom: Platform.OS === 'ios' ? 36 : 24,
     left: 0, right: 0,
@@ -656,7 +737,7 @@ const styles = StyleSheet.create({
   autoPlayBtnActive: { backgroundColor: '#e94560' },
   autoPlayBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 
-  // 进度圆点
+  // 杩涘害鍦嗙偣
   dotRow: {
     position: 'absolute',
     bottom: Platform.OS === 'ios' ? 100 : 90,
@@ -670,7 +751,7 @@ const styles = StyleSheet.create({
   },
   dotActive: { backgroundColor: '#e94560', transform: [{ scale: 1.4 }] },
 
-  // 文件夹浏览器
+  // 鏂囦欢澶规祻瑙堝櫒
   browserContainer: { flex: 1, backgroundColor: '#1a1a2e' },
   browserHeader: {
     flexDirection: 'row', alignItems: 'center',
