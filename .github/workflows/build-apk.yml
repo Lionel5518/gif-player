@@ -9,13 +9,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download project ZIP from Expo
-        run: |
-          # 从 Expo 服务器下载已上传的项目
-          curl -L -o gif-player.zip "${{ secrets.EXPO_PROJECT_ZIP_URL }}" || true
-
-      - name: Fallback - Build with local source
-        if: failure()
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
